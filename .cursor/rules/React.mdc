@@ -1,0 +1,193 @@
+---
+alwaysApply: true
+globs: "*.ts,*.tsx"
+description: React Development Guidelines for TypeScript projects.
+---
+# React Development Guidelines
+
+A React (TypeScript-first) development guideline adapted from the provided Python development spec.
+Goal: readable, testable, maintainable, and CI-enforceable frontend code.
+
+## 1. Formatting & Tooling
+* **Formatter:** Use **Prettier**; run `prettier --write` as a pre-commit hook.
+* **Linter:** Use **ESLint** with `eslint-plugin-react`, `eslint-plugin-react-hooks`, `eslint-plugin-jsx-a11y`, and `eslint-plugin-import`.
+* **Type checking:** Use **TypeScript**. Run `tsc --noEmit` (or equivalent) in CI.
+* **Import ordering:** Enforce group order (builtin / third-party / internal / local) via `eslint-plugin-import` with blank lines between groups.
+* **Pre-commit & CI:** Use Husky + lint-staged or similar to run `prettier`, `eslint --fix`, quick tests. CI runs full lint, types, tests, and build.
+* **Automate:** Make formatting and lint fixes automatic where safe; require manual review for non-fixable lint issues.
+
+## 2. Naming Conventions
+* **Files & modules**
+
+  * Component files: `PascalCase.tsx` (e.g., `UserCard.tsx`).
+  * Hooks: `useXxx.ts` (e.g., `useAuth.ts`).
+  * Styles colocated: `ComponentName.module.css` / `.module.scss`.
+  * Types: `types.ts` or `user.types.ts`, or `src/types/`.
+* **Identifiers**
+
+  * Components / classes: `PascalCase`.
+  * Functions / variables: `camelCase`.
+  * Constants: `UPPER_SNAKE_CASE`.
+  * Hooks must start with `use` (e.g., `useDebouncedValue`).
+* **Exports:** File name should reflect default exported component when used.
+
+## 3. Error Handling
+* Use exceptions and explicit error types (`ApiError`, `ValidationError`).
+* Catch specific exceptions; avoid silent `catch {}`.
+* Add context when re-throwing: `throw new ApiError('msg', { cause: err })`.
+* Log errors to monitoring services (Sentry / Datadog) but **never** log sensitive data.
+* Use Error Boundaries to wrap UI that might throw.
+
+## 4. Simplicity, Composition & Architecture
+* Favor small, single-responsibility components.
+* Separate container (logic) from presentational (UI) components.
+* Use custom hooks for reusable logic.
+* Prefer composition over inheritance.
+* Keep side effects explicit and colocated with the responsible hook/component.
+
+## 5. Types & Type Safety
+* Use TypeScript with `strict: true`.
+* Avoid `any`; document and limit any unavoidable uses.
+* Use `interface Props {}` or `type Props = {}` for component props.
+* Prefer discriminated unions for variant responses.
+* Consider `tsd` or type tests for complex types.
+
+## 6. Documentation & Comments
+* Document all exported modules, functions, hooks, and components with JSDoc/TSDoc.
+* Module-level top comment explaining responsibilities and exposures.
+* Maintain `README.md`, `CONTRIBUTING.md`, and `ARCHITECTURE.md`.
+* Provide API contract documentation for backend/third-party interfaces.
+
+## 7. Testing
+* **Unit tests:** Jest + React Testing Library (test behavior, not implementation).
+* **Integration tests:** cover important user flows.
+* **E2E tests:** Playwright or Cypress for critical flows.
+* **Coverage:** enforce sensible thresholds in CI; avoid meaningless coverage-only tests.
+* Use factories/fixtures for test data; prefer deterministic tests.
+
+## 8. Accessibility (a11y)
+* Use semantic HTML (`button`, `nav`, `main`, etc.).
+* Prefer semantic solutions before ARIA. Use ARIA only if semantics cannot satisfy requirements.
+* Ensure keyboard accessibility and visible focus states.
+* Run automated checks (`eslint-plugin-jsx-a11y`, axe) and perform manual audits on key pages.
+
+## 9. Performance & Optimization
+* Measure before optimizing (Lighthouse).
+* Use code-splitting and lazy loading for large routes/components.
+* Use memoization (`React.memo`, `useMemo`, `useCallback`) judiciously.
+* Virtualize large lists (`react-window` / `react-virtualized`).
+* Optimize images (correct sizes, `loading="lazy"`, modern formats).
+* Regular bundle analysis and alerts for size regressions.
+
+## 10. Security & Dependencies
+* Avoid `dangerouslySetInnerHTML`; sanitize if unavoidable.
+* Disallow `eval`/`new Function`.
+* Use CSP and security headers at deployment layer.
+* Dependabot / Snyk / GH Alerts enabled and responded to.
+* Keep lockfile (`pnpm-lock.yaml` / `package-lock.json` / `yarn.lock`) committed.
+* Never embed sensitive keys in frontend code; use backend proxy or runtime injection.
+
+## 11. Build, CI/CD & Releases
+* CI pipeline: checkout → install → lint → typecheck → test → build → artifacts.
+* Include Storybook build and visual regression checks where applicable.
+* Use Conventional Commits + semantic-release for automated changelog/release if desired.
+* Clearly separate environment configurations (dev / staging / prod).
+
+## 12. Component API & Export Policy
+* Prefer named exports to improve tree-shaking (`export const Button = ...`).
+* Maintain stable public APIs; document breaking changes with migration notes.
+* Use deprecation annotations and provide migration guidance.
+
+## 13. Styling & Design Tokens
+* Centralize design tokens (colors, spacing, typography) via CSS variables or Tailwind config.
+* Co-locate styles with components; avoid global style pollution.
+* Prefer CSS Modules, Tailwind, or agreed CSS-in-JS solution uniformly across the project.
+
+## 14. Hooks & Effects Rules
+* Enforce React Hooks rules via `eslint-plugin-react-hooks`.
+* Clean up side effects in `useEffect`.
+* Document hooks that have side effects and their lifecycle expectations.
+
+## 15. Example Project Structure
+```
+src/
+  components/
+    App.tsx
+    UserCard/
+      UserCard.tsx
+      UserCard.module.css
+      UserCard.stories.tsx
+      UserCard.test.tsx
+  lib/
+    schema/
+      gridSchema.json
+      validator.ts
+  hooks/
+    useAuth.ts
+  services/
+    api.ts
+    auth.api.ts
+  types/
+    user.types.ts
+  utils/
+    formatDate.ts
+  pages/
+    index.tsx
+  styles/
+    tokens.css
+  main.tsx
+```
+
+## 16. Example component JSDoc
+```ts
+/**
+ * UserCard - display user information.
+ *
+ * @param {Props} props
+ * @returns JSX.Element
+ *
+ * @example
+ * <UserCard user={user} />
+ */
+export function UserCard({ user }: Props) { ... }
+```
+
+## 17. Example pre-commit hooks
+
+* `prettier --write`
+* `eslint --fix`
+* `pnpm test --findRelatedTests` (or quick test command)
+* Use `lint-staged` to `git add` fixed files automatically.
+
+## 18. Governance & Code Review
+
+* All PRs require at least one reviewer (peer-level or above).
+* CI must pass before merge.
+* For public-facing or breaking changes, follow RFC + deprecation cycle.
+* Enforce via CI and pre-commit hooks to reduce manual enforcement.
+
+## 19. Accessibility & Internationalization Considerations
+
+* Provide i18n-ready components (no hard-coded strings).
+* Ensure date/number localization patterns are pluggable.
+* Test locale-specific layouts (RTL where applicable).
+
+## 20. On Reading URLs (Agent Guideline)
+
+* **Always** read and reference URLs supplied by contributors (API docs, design specs, tickets).
+* When implementing from an externally supplied URL, record the source and version in module docs.
+
+## 21. Additional Recommendations
+
+* Use Storybook for component-driven development and visual tests.
+* Integrate lightweight state libraries (Zustand / Jotai) for local/global state when appropriate.
+* Keep a `CHANGELOG.md` for human-readable historical context when releases matter.
+
+## 22. Quick-checklist for PRs
+* [ ] Prettier formatted
+* [ ] ESLint passes (no new warnings unless justified)
+* [ ] TypeScript checks pass
+* [ ] Unit tests added/updated
+* [ ] Storybook story added for visual components (if applicable)
+* [ ] Docstrings / README updated (if public API changed)
+* [ ] No sensitive info or secrets leaked
