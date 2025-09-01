@@ -5,7 +5,7 @@
   "main": "dist/main.js",
   "type": "module",
   "scripts": {
-    "dev": "node --loader ts-node/esm src/dev.ts",
+    "dev": "tsx src/dev.ts",
     "build": "tsc -b",
     "typecheck": "tsc --noEmit"
   },
@@ -13,9 +13,7 @@
     "electron": "^29.1.6"
   },
   "devDependencies": {
-    "ts-node": "^10.9.2",
+    "tsx": "^4.20.5",
     "typescript": "^5.4.5"
   }
 }
-
-
