@@ -1,0 +1,34 @@
+{
+  "name": "cone-editor",
+  "private": true,
+  "version": "0.0.0",
+  "description": "ConeEditor monorepo: Electron + Vite React renderer + Python FastAPI",
+  "engines": {
+    "node": ">=18.17.0",
+    "pnpm": ">=8.0.0"
+  },
+  "packageManager": "pnpm@8.15.7",
+  "scripts": {
+    "dev": "concurrently -k -n RENDERER,ELECTRON \"pnpm --filter renderer dev\" \"pnpm --filter electron dev\"",
+    "lint": "eslint .",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "typecheck": "pnpm -r --parallel run typecheck",
+    "build": "pnpm -r --parallel run build",
+    "python:dev": "uvicorn python.server:app --reload"
+  },
+  "devDependencies": {
+    "@typescript-eslint/eslint-plugin": "^7.0.0",
+    "@typescript-eslint/parser": "^7.0.0",
+    "concurrently": "^8.2.2",
+    "eslint": "^8.57.0",
+    "eslint-config-prettier": "^9.1.0",
+    "eslint-plugin-import": "^2.29.1",
+    "eslint-plugin-jsx-a11y": "^6.8.0",
+    "eslint-plugin-react": "^7.34.1",
+    "eslint-plugin-react-hooks": "^4.6.0",
+    "prettier": "^3.2.5"
+  }
+}
+
+

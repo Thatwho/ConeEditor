@@ -1,3 +1,16 @@
+node_modules/
+dist/
+build/
+.DS_Store
+.husky/
+.idea/
+.vscode/
+pnpm-lock.yaml
+.venv/
+__pycache__/
+python/.venv/
+python/.mypy_cache/
+python/.pytest_cache/
 # Logs
 logs
 *.log

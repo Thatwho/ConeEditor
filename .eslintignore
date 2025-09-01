@@ -1,0 +1,4 @@
+python/
+.github/
+node_modules/
+renderer/index.html
