@@ -1,6 +1,7 @@
 import React, { useState, useCallback } from 'react'
 import { FileTree } from './components/FileTree'
 import { Editor } from './components/Editor'
+import { BacklinksPanel } from './components/BacklinksPanel'
 
 /**
  * Main application component that orchestrates the file tree and editor.
@@ -198,9 +199,24 @@ export function App(): JSX.Element {
             }}>
               <Editor
                 filePath={selectedFile}
+                vaultPath={vaultPath}
                 onSave={handleEditorSave}
                 onContentChange={handleEditorContentChange}
                 className="flex-1"
+              />
+            </div>
+
+            {/* Backlinks panel */}
+            <div style={{
+              width: '300px',
+              backgroundColor: '#f8f9fa',
+              borderLeft: '1px solid #e9ecef'
+            }}>
+              <BacklinksPanel
+                currentFilePath={selectedFile}
+                vaultPath={vaultPath}
+                onNavigateToNote={handleFileSelect}
+                className="h-full"
               />
             </div>
           </>

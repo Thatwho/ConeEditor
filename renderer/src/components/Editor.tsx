@@ -11,6 +11,7 @@ import { linter, lintKeymap } from '@codemirror/lint'
 
 interface EditorProps {
   filePath: string | null
+  vaultPath?: string | null
   onSave?: (content: string) => void
   onContentChange?: (content: string, hasUnsavedChanges: boolean) => void
   className?: string
@@ -24,6 +25,7 @@ interface EditorProps {
  */
 export function Editor({ 
   filePath, 
+  vaultPath,
   onSave,
   onContentChange,
   className = ''
@@ -80,12 +82,18 @@ export function Editor({
       setLastSaved(new Date())
       onSave?.(saveContent)
       
-      // Call POST /index stub (for future implementation)
+      // Call POST /index to update the search index
       try {
-        // This is a stub for future implementation
-        console.log('POST /index called for file:', filePath)
+        const { indexNote } = await import('../lib/api')
+        const indexResult = await indexNote({
+          path: filePath,
+          content: saveContent,
+          modified_at: new Date().toISOString(),
+          vault_path: vaultPath || undefined
+        })
+        console.log('Note indexed successfully:', indexResult)
       } catch (error) {
-        console.warn('POST /index failed (expected in development):', error)
+        console.warn('Failed to index note (Python service may not be running):', error)
       }
     } catch (error) {
       console.error('Failed to save file:', error)
