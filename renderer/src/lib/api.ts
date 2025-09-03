@@ -135,10 +135,25 @@ export async function checkHealth(): Promise<HealthResponse> {
  * Index a note by sending its content to the Python backend.
  */
 export async function indexNote(request: IndexRequest): Promise<IndexResponse> {
-  return apiRequest<IndexResponse>('/index', {
-    method: 'POST',
-    body: JSON.stringify(request)
-  })
+  // Prefer local TS-only indexing during Sprints 0-3
+  try {
+    const local = await window.electronAPI.indexNoteLocal(request.path)
+    return {
+      request_id: 'local-ts',
+      duration_ms: 0,
+      indexed_chunks: local.indexed_chunks,
+      chunks: local.chunks,
+      headings_count: local.headings_count,
+      links_count: local.links_count,
+      note_id: local.note_id
+    }
+  } catch {
+    // Fallback to Python API if available
+    return apiRequest<IndexResponse>('/index', {
+      method: 'POST',
+      body: JSON.stringify(request)
+    })
+  }
 }
 
 /**
@@ -154,18 +169,40 @@ export async function searchSemantic(request: SearchRequest): Promise<SearchResp
 /**
  * Get note information including backlinks and headings.
  */
-export async function getNoteInfo(notePath: string, vaultPath?: string): Promise<NoteInfo> {
-  const encodedPath = encodeURIComponent(notePath)
-  const vaultParam = vaultPath ? `&vault_path=${encodeURIComponent(vaultPath)}` : ''
-  return apiRequest<NoteInfo>(`/note?path=${encodedPath}${vaultParam}`)
+export async function getNoteInfo(notePath: string, _vaultPath?: string): Promise<NoteInfo> {
+  try {
+    const local = await window.electronAPI.getNoteInfoLocal(notePath)
+    return {
+      note_id: local.note_id,
+      path: local.path,
+      title: local.title,
+      created_at: local.created_at,
+      modified_at: local.modified_at,
+      word_count: local.word_count,
+      headings: local.headings,
+      backlinks: local.backlinks
+    }
+  } catch {
+    const encodedPath = encodeURIComponent(notePath)
+    return apiRequest<NoteInfo>(`/note?path=${encodedPath}`)
+  }
 }
 
 /**
  * Get graph data for visualization.
  */
-export async function getGraphData(limit = 500, minDegree = 0, vaultPath?: string): Promise<GraphData> {
-  const vaultParam = vaultPath ? `&vault_path=${encodeURIComponent(vaultPath)}` : ''
-  return apiRequest<GraphData>(`/graph?limit=${limit}&min_degree=${minDegree}${vaultParam}`)
+export async function getGraphData(limit = 500, minDegree = 0, _vaultPath?: string): Promise<GraphData> {
+  try {
+    const local = await window.electronAPI.getGraphLocal(limit, minDegree)
+    return {
+      request_id: 'local-ts',
+      duration_ms: 0,
+      nodes: local.nodes,
+      edges: local.edges
+    }
+  } catch {
+    return apiRequest<GraphData>(`/graph?limit=${limit}&min_degree=${minDegree}`)
+  }
 }
 
 /**
@@ -185,7 +222,30 @@ export async function isPythonServiceRunning(): Promise<boolean> {
  */
 export function formatApiError(error: unknown): string {
   if (error instanceof Error) {
-    return error.message
+    let message = error.message
+    
+    // Try to parse FastAPI error detail if it's JSON
+    try {
+      // Extract detail from error message if it contains JSON
+      const jsonMatch = message.match(/API Error \d+: (.+)/)
+      if (jsonMatch) {
+        const detail = jsonMatch[1]
+        try {
+          const parsed = JSON.parse(detail)
+          if (typeof parsed === 'object' && parsed !== null) {
+            message = typeof parsed.detail === 'object' 
+              ? JSON.stringify(parsed.detail) 
+              : String(parsed.detail || parsed.message || detail)
+          }
+        } catch {
+          // If not JSON, use as is
+        }
+      }
+    } catch {
+      // If parsing fails, use original message
+    }
+    
+    return message
   }
   return 'Unknown API error occurred'
 }

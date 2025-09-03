@@ -38,6 +38,7 @@ export function Editor({
   const [lastSaved, setLastSaved] = useState<Date | null>(null)
   const debounceTimeoutRef = useRef<NodeJS.Timeout | null>(null)
   const fileStatsRef = useRef<any>(null)
+  const lastLocalSaveAtRef = useRef<number>(0)
 
   // Load file content
   const loadFile = useCallback(async () => {
@@ -75,6 +76,7 @@ export function Editor({
     
     const saveContent = contentToSave ?? viewRef.current?.state.doc.toString() ?? content
     
+    lastLocalSaveAtRef.current = Date.now()
     setIsSaving(true)
     try {
       await window.electronAPI.writeFile(filePath, saveContent)
@@ -82,18 +84,12 @@ export function Editor({
       setLastSaved(new Date())
       onSave?.(saveContent)
       
-      // Call POST /index to update the search index
+      // Index locally in SQLite (TS-only during Sprints 0-3)
       try {
-        const { indexNote } = await import('../lib/api')
-        const indexResult = await indexNote({
-          path: filePath,
-          content: saveContent,
-          modified_at: new Date().toISOString(),
-          vault_path: vaultPath || undefined
-        })
+        const indexResult = await window.electronAPI.indexNoteLocal(filePath)
         console.log('Note indexed successfully:', indexResult)
       } catch (error) {
-        console.warn('Failed to index note (Python service may not be running):', error)
+        console.warn('Failed to index note locally:', error)
       }
     } catch (error) {
       console.error('Failed to save file:', error)
@@ -131,9 +127,9 @@ export function Editor({
     saveFile()
   }, [saveFile])
 
-  // Initialize CodeMirror
+  // Initialize CodeMirror when a file is selected and the container is mounted
   useEffect(() => {
-    if (!editorRef.current) return
+    if (!editorRef.current || viewRef.current) return
 
     const saveKeymap = keymap.of([
       {
@@ -198,7 +194,7 @@ export function Editor({
       view.destroy()
       viewRef.current = null
     }
-  }, []) // Only run once on mount
+  }, [filePath])
 
   // Load file when filePath changes
   useEffect(() => {
@@ -211,6 +207,21 @@ export function Editor({
 
     const unsubscribe = window.electronAPI.onFileChanged((event) => {
       if (event.path === filePath) {
+        // Ignore events immediately following our own local save
+        if (Date.now() - lastLocalSaveAtRef.current < 2000 || isSaving) {
+          return
+        }
+
+        // If stats are present, ignore events that are not newer than our last save
+        try {
+          const mtimeMs = event.stats ? new Date((event as any).stats.mtime).getTime() : 0
+          if (lastSaved && mtimeMs && mtimeMs <= lastSaved.getTime() + 50) {
+            return
+          }
+        } catch {
+          // best-effort; fall through
+        }
+
         // Check if we have unsaved changes
         if (hasUnsavedChanges) {
           const userChoice = confirm(

@@ -3,6 +3,7 @@ import path from 'node:path'
 import { promises as fs } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import chokidar, { FSWatcher } from 'chokidar'
+import { initVaultDb, indexNoteInDb, getNoteInfoFromDb, getGraphDataFromDb } from './db.js'
 
 // Get __dirname equivalent in ES modules
 const __filename = fileURLToPath(import.meta.url)
@@ -10,7 +11,7 @@ const __dirname = path.dirname(__filename)
 
 async function createWindow(): Promise<void> {
   const isPackaged = app.isPackaged
-  const preloadPath = path.join(__dirname, 'preload.js')
+  const preloadPath = path.join(__dirname, 'preload.cjs')
   
   console.log('Current __dirname:', __dirname)
   console.log('Preload path:', preloadPath)
@@ -77,6 +78,7 @@ ipcMain.handle('open-vault', async () => {
   
   // Start watching the new vault
   currentVaultPath = vaultPath
+  initVaultDb(vaultPath)
   startFileWatcher(vaultPath)
   
   return vaultPath
@@ -131,6 +133,7 @@ Happy writing! ✨
     
     // Start watching the new vault
     currentVaultPath = vaultPath
+    initVaultDb(vaultPath)
     startFileWatcher(vaultPath)
     
     return vaultPath
@@ -151,6 +154,9 @@ ipcMain.handle('read-file', async (_event, filePath: string) => {
 ipcMain.handle('write-file', async (_event, filePath: string, content: string) => {
   try {
     await fs.writeFile(filePath, content, 'utf-8')
+    if (currentVaultPath) {
+      indexNoteInDb({ path: filePath, content, modified_at: new Date().toISOString() })
+    }
   } catch (error) {
     throw new Error(`Failed to write file: ${error instanceof Error ? error.message : 'Unknown error'}`)
   }
@@ -181,6 +187,32 @@ ipcMain.handle('get-vault-files', async (_event, vaultPath: string) => {
     return files.sort()
   } catch (error) {
     throw new Error(`Failed to get vault files: ${error instanceof Error ? error.message : 'Unknown error'}`)
+  }
+})
+
+// Local metadata APIs for renderer
+ipcMain.handle('meta:get-note-info', async (_event, filePath: string) => {
+  try {
+    return getNoteInfoFromDb(filePath)
+  } catch (error) {
+    throw new Error(`Failed to get note info: ${error instanceof Error ? error.message : 'Unknown error'}`)
+  }
+})
+
+ipcMain.handle('meta:index-note', async (_event, filePath: string) => {
+  try {
+    const content = await fs.readFile(filePath, 'utf-8')
+    return indexNoteInDb({ path: filePath, content, modified_at: new Date().toISOString() })
+  } catch (error) {
+    throw new Error(`Failed to index note: ${error instanceof Error ? error.message : 'Unknown error'}`)
+  }
+})
+
+ipcMain.handle('meta:get-graph', async (_event, limit: number = 500, minDegree: number = 0) => {
+  try {
+    return getGraphDataFromDb(limit, minDegree)
+  } catch (error) {
+    throw new Error(`Failed to get graph: ${error instanceof Error ? error.message : 'Unknown error'}`)
   }
 })
 

@@ -28,7 +28,13 @@ contextBridge.exposeInMainWorld('electronAPI', {
     const listener = (_event: any, data: { path: string }) => callback(data)
     ipcRenderer.on('file-deleted', listener)
     return () => ipcRenderer.removeListener('file-deleted', listener)
-  }
+  },
+
+  // Local metadata APIs (TS-only indexing)
+  indexNoteLocal: (path: string) => ipcRenderer.invoke('meta:index-note', path),
+  getNoteInfoLocal: (path: string) => ipcRenderer.invoke('meta:get-note-info', path),
+  getGraphLocal: (limit: number, minDegree: number) => ipcRenderer.invoke('meta:get-graph', limit, minDegree)
 })
+
 
 

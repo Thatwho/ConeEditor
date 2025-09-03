@@ -128,8 +128,6 @@ export function BacklinksPanel({
           marginBottom: '16px'
         }}>
           <strong>Error:</strong> {error}
-          <br />
-          <small>Make sure the Python service is running on port 8000</small>
         </div>
       )}
 
@@ -219,7 +217,8 @@ export function BacklinksPanel({
                       marginBottom: '8px',
                       cursor: 'pointer'
                     }}
-                    className="hover:bg-gray-50"
+                    onMouseEnter={(e) => e.currentTarget.style.backgroundColor = '#f8f9fa'}
+                    onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'white'}
                     onClick={() => handleBacklinkClick(backlink.src_path)}
                   >
                     <div style={{

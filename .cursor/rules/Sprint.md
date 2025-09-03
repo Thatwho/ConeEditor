@@ -2,7 +2,7 @@
 
 * **Electron (main.ts)**：窗口管理、原生对话、Vault 文件系统监控（chokidar）、启动/监控 Python 服务、暴露安全 IPC（preload.ts）。
 * **Renderer (React + TypeScript + Vite)**：UI 层（编辑器、文件树、Graph、Backlinks、Search、Settings）。
-* **Python 服务 (FastAPI)**：负责向量化、向量库、索引管理、`/health`, `/index`, `/search`, `/graph` 等 HTTP 接口，持久化 SQLite（元数据/links/chunks），向量库可用 Chroma/Lance（可配置）。
+* **Python 服务 (FastAPI)**：仅负责向量相关（embedding、向量库、语义检索），`/health`、`/index`（向量化）与 `/search/semantic`；不再负责图谱与通用 SQLite 元数据写入。
 * 通信方式：Renderer -> Python 使用 HTTP (127.0.0.1:8000)；Renderer 与主进程通过 contextBridge/IPC 做本地能力调用。
 
 ## Sprint 0 — 基础工程与 CI（项目上手 / 骨架）
@@ -93,15 +93,15 @@
 * 并发写造成冲突：在写入前检查文件 modified time，若不一致提示用户合并或覆盖。
 * chokidar 在不同平台差异：使用稳定配置并在 Windows/macOS/Linux 做烟雾测试。
 
-## Sprint 2 — Markdown AST、remark 插件与索引入门（SQLite）
+## Sprint 2 — Markdown AST、remark 插件与索引入门（SQLite by TS）
 
 **目标**
-实现 Markdown AST 解析（unified + remark + 自定义 wikilink 插件）、建立 SQLite 元数据索引（notes、headings、links、chunks）。实现增量索引接口（Renderer 保存后调用 Python `/index`，Python 写入 SQLite）。
+实现 Markdown AST 解析（unified + remark + 自定义 wikilink 插件）、建立 SQLite 元数据索引（notes、headings、links、chunks）。增量索引由 TS 完成入库；随后异步通知 Python 仅做向量化。
 
 **交付物**
 
 * 完整的 `remark-wikilink` 插件（TypeScript），可用于前端实时解析、高亮与提取链接列表
-* Python `/index` 最小实现：接收 `path, content, modified_at`，解析并写入 SQLite（notes、headings、links、chunks；chunks 可先为文本切片）
+* TS 侧完成 SQLite 入库；Python `/index`（或 `/index/chunks`）仅接收 `chunk_id[]` 并向量化入库向量库
 * 前端 BacklinksPanel：保存后显示 `links` 表中显式反链
 
 **具体任务**
@@ -111,11 +111,11 @@
    * 支持 `[[Target|Alias]]`、`[[Target]]` 及普通 markdown link
    * 输出 AST 节点类型 `wikilink`，带 `data.target`、`data.alias`
    * 导出工具函数：`extractWikilinks(markdownText)`（用于索引前的检查）
-2. Python：初始化 SQLite schema（参考 PRD），实现 `POST /index`：
+2. Python：实现仅向量化接口：
 
-   * 使用 Python 的 markdown 库或 regex 提取 headings 与 wikilinks（与 TS 插件解析保持一致）
-   * upsert 到 notes、headings、links、chunks 表
-   * 返回 `indexed_chunks` 与 chunk 列表
+   * 接收 TS 提供的 `chunk_id` 列表
+   * 自 `.cone/meta.db` 读取 `chunks.text`，生成 embedding，写入向量库并更新 `vector_meta`
+   * 返回 `indexed_chunks` 与 `chunk_id` 列表
 3. Renderer：实现 BacklinksPanel，调用 `/note?path=...` 或 `/graph` 获取并显示反链
 4. 编写 DB migration / init 脚本 `python/db_init.py`
 
@@ -137,14 +137,14 @@
 
 ---
 
-## Sprint 3 — Graph 视图（cytoscape）与 Mindmap（markmap）只读
+## Sprint 3 — Graph 视图（cytoscape）与 Mindmap（markmap）只读（Graph by TS）
 
 **目标**
 实现全局笔记关系图（cytoscape）及单文档思维导图（markmap）只读视图，支持交互（节点点击打开 note、按筛选聚合显示等）。
 
 **交付物**
 
-* Python `/graph` endpoint（返回 nodes/edges，基于 links 表生成）
+* TS 侧基于 SQLite 生成 nodes/edges 并渲染，无需 Python `/graph`
 * Renderer 的 CytoscapeGraph 组件：
 
   * 布局、样式、点选处理
@@ -154,10 +154,10 @@
 
 **具体任务**
 
-1. 实现 Python `/graph?limit=&min_degree=`：
+1. 在 TS 侧实现 Graph 数据生成 API（或直接在 Renderer 聚合）：
 
-   * 从 links/notes 表查询生成 nodes（含 meta）与 edges
-   * 支持 filter 参数（limit、min\_degree、center 等）
+   * 从 SQLite 的 `links/notes` 查询生成 nodes/edges
+   * 支持过滤参数（limit、min\_degree、center 等）
 2. Renderer 集成 cytoscape 与 cytoscape-dagre（或 cose）：
 
    * 初始渲染网络（可加载最多 N 个节点）

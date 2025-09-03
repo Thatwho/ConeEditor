@@ -46,6 +46,18 @@
 * **Python 服务（FastAPI）**：语义/向量化服务（embedding、向量库接口、search、index）
 * **本地持久化**：笔记以 Markdown 文件存储（用户选择 Vault 文件夹）；索引与元数据存放 SQLite；向量存储（向量 DB，本地模式）
 
+### 3.1 组件职责边界（TS vs Python）
+
+* TS/Electron（Node）负责：
+  * Vault 管理与文件 I/O（选择/切换、读写、chokidar 监听）
+  * Markdown 解析（remark 插件）与索引前处理（提取 wikilinks、headings、普通链接）
+  * 元数据入库（SQLite）：`notes / headings / links / chunks`
+  * 反向链接与图谱数据生成：基于 SQLite 构建 `nodes/edges` 提供给前端渲染
+* Python 服务仅负责向量相关：
+  * 生成/更新向量（embedding）与本地向量库管理（Chroma/Lance 等）
+  * 语义检索（`/search/semantic`）
+  * 接收 TS 提供的 `chunk_id` 列表或 note 标识，自 SQLite 读取 `chunks.text` 完成向量化，并在 `vector_meta` 记录映射
+
 ---
 
 ## 4. API Spec（本地 FastAPI，所有路径基于 `http://127.0.0.1:8000`）
@@ -140,6 +152,40 @@
 
 ## 6. 数据模型与持久化方案
 
+### 6.0 Vault 本地目录布局（.cone/）
+
+* 在每个 Vault 根目录创建隐藏目录 `.cone/`，用于元数据与向量存储：
+  * `.cone/meta.db` — SQLite 元数据数据库（由 TS 读写）
+  * `.cone/config.json` — Vault 级配置（向量后端、索引策略等）
+  * `.cone/state.json` — 运行态信息（最近索引时间、待向量化的 `chunk_id` 等）
+  * `.cone/vector/` — 向量库数据目录（由 Python 管理）
+  * `.cone/locks/index.lock` — 索引互斥锁（可选）
+  * `.cone/logs/` — 运行日志（可选）
+  * `.cone/cache/graph.cache.json` — 图谱缓存（可选）
+
+示例：`.cone/config.json`
+
+```json
+{
+  "version": 1,
+  "vector": { "backend": "chroma", "path": ".cone/vector" },
+  "indexing": { "mode": "incremental", "exclude": ["**/.git/**", "**/.cone/**"] },
+  "parser": { "wikilink": { "aliasSeparator": "|" } }
+}
+```
+
+示例：`.cone/state.json`
+
+```json
+{
+  "schemaVersion": 1,
+  "lastFullIndexAt": "2025-09-01T12:00:00Z",
+  "lastScanAt": "2025-09-01T12:34:56Z",
+  "pendingChunks": [],
+  "python": { "modelLoaded": false }
+}
+```
+
 ### 6.1 Markdown files
 
 * Vault: 用户选择一个本地目录，笔记以 `.md` 文件保存，文件名即 note id（也支持 frontmatter 中的 `id` 字段覆盖）。
@@ -202,6 +248,8 @@ CREATE INDEX idx_notes_modified ON notes(modified_at);
 CREATE INDEX idx_links_src ON links(src_note);
 CREATE INDEX idx_chunks_note ON chunks(note_id);
 ```
+
+> 职责说明：`notes/headings/links/chunks` 由 TS 入库与维护；`vector_meta` 由 Python 在完成向量化后写入/更新。
 
 ### 6.3 向量 schema（向量库）
 

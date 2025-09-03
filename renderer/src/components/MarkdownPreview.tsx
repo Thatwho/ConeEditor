@@ -1,8 +1,9 @@
-import React, { useMemo } from 'react'
+import React, { useMemo, useEffect, useRef } from 'react'
 import { unified } from 'unified'
 import remarkParse from 'remark-parse'
 import remarkRehype from 'remark-rehype'
 import rehypeStringify from 'rehype-stringify'
+import rehypeSanitize from 'rehype-sanitize'
 import remarkWikilink, { extractWikilinks } from '../lib/remark-wikilink'
 
 interface MarkdownPreviewProps {
@@ -27,32 +28,16 @@ export function MarkdownPreview({
   className = '' 
 }: MarkdownPreviewProps): JSX.Element {
   
+  const containerRef = useRef<HTMLDivElement>(null)
+
   const { html, wikilinks } = useMemo(() => {
     try {
       // Process markdown with wikilink plugin
       const processor = unified()
         .use(remarkParse)
         .use(remarkWikilink)
-        .use(remarkRehype, {
-          handlers: {
-            // Custom handler for wikilink nodes
-            wikilink: (h, node: any) => {
-              const target = node.data.target
-              const alias = node.data.alias
-              const displayText = alias || target
-              
-              return h(node, 'a', {
-                'data-wikilink': target,
-                href: '#',
-                className: 'wikilink',
-                onClick: (e: Event) => {
-                  e.preventDefault()
-                  onWikilinkClick?.(target)
-                }
-              }, displayText)
-            }
-          }
-        })
+        .use(remarkRehype)
+        .use(rehypeSanitize)
         .use(rehypeStringify)
       
       const htmlResult = processor.processSync(content).toString()
@@ -63,11 +48,32 @@ export function MarkdownPreview({
       console.error('Error processing markdown:', error)
       return { html: `<pre>Error processing markdown: ${error}</pre>`, wikilinks: [] }
     }
-  }, [content, onWikilinkClick])
+  }, [content])
+
+  // Event delegation for wikilink clicks
+  useEffect(() => {
+    const container = containerRef.current
+    if (!container || !onWikilinkClick) return
+
+    const handleClick = (event: Event) => {
+      const target = event.target as HTMLElement
+      if (target.tagName === 'A' && target.hasAttribute('data-wikilink')) {
+        event.preventDefault()
+        const wikilinkTarget = target.getAttribute('data-wikilink')
+        if (wikilinkTarget) {
+          onWikilinkClick(wikilinkTarget)
+        }
+      }
+    }
+
+    container.addEventListener('click', handleClick)
+    return () => container.removeEventListener('click', handleClick)
+  }, [onWikilinkClick])
 
   return (
     <div className={`markdown-preview ${className}`}>
       <div 
+        ref={containerRef}
         style={{
           padding: '16px',
           lineHeight: '1.6',
@@ -91,47 +97,48 @@ export function MarkdownPreview({
         </div>
       )}
       
-      <style jsx>{`
-        .markdown-preview :global(.wikilink) {
+      {/* Inline styles replacing styled-jsx */}
+      <style>{`
+        .markdown-preview a[data-wikilink] {
           color: #007acc;
           text-decoration: none;
           font-weight: 500;
           border-bottom: 1px dashed #007acc;
         }
         
-        .markdown-preview :global(.wikilink:hover) {
+        .markdown-preview a[data-wikilink]:hover {
           background-color: #e3f2fd;
           text-decoration: none;
         }
         
-        .markdown-preview :global(h1) {
+        .markdown-preview h1 {
           font-size: 1.8em;
           margin: 1em 0 0.5em 0;
           color: #2c3e50;
         }
         
-        .markdown-preview :global(h2) {
+        .markdown-preview h2 {
           font-size: 1.5em;
           margin: 1em 0 0.5em 0;
           color: #34495e;
         }
         
-        .markdown-preview :global(h3) {
+        .markdown-preview h3 {
           font-size: 1.2em;
           margin: 1em 0 0.5em 0;
           color: #7f8c8d;
         }
         
-        .markdown-preview :global(p) {
+        .markdown-preview p {
           margin: 0.8em 0;
         }
         
-        .markdown-preview :global(ul, ol) {
+        .markdown-preview ul, .markdown-preview ol {
           margin: 0.8em 0;
           padding-left: 2em;
         }
         
-        .markdown-preview :global(blockquote) {
+        .markdown-preview blockquote {
           margin: 1em 0;
           padding: 0.5em 1em;
           border-left: 4px solid #ddd;
@@ -139,7 +146,7 @@ export function MarkdownPreview({
           font-style: italic;
         }
         
-        .markdown-preview :global(code) {
+        .markdown-preview code {
           background-color: #f1f3f4;
           padding: 2px 4px;
           border-radius: 3px;
@@ -147,7 +154,7 @@ export function MarkdownPreview({
           font-size: 0.9em;
         }
         
-        .markdown-preview :global(pre) {
+        .markdown-preview pre {
           background-color: #f8f9fa;
           padding: 1em;
           border-radius: 4px;
@@ -155,7 +162,7 @@ export function MarkdownPreview({
           border: 1px solid #e9ecef;
         }
         
-        .markdown-preview :global(pre code) {
+        .markdown-preview pre code {
           background: none;
           padding: 0;
         }

@@ -127,13 +127,16 @@ class DatabaseManager:
                 alias = match.group(3).strip() if match.group(3) else None
                 link_text = alias or target
                 
+                # Normalize the target - try to resolve to actual note path
+                normalized_target = self._resolve_link_target(target)
+                
                 # Count occurrences
-                if target in link_counts:
-                    link_counts[target] += 1
+                if normalized_target in link_counts:
+                    link_counts[normalized_target] += 1
                 else:
-                    link_counts[target] = 1
+                    link_counts[normalized_target] = 1
                     links.append({
-                        "target": target,
+                        "target": normalized_target,
                         "link_text": link_text
                     })
             
@@ -150,6 +153,41 @@ class DatabaseManager:
         except sqlite3.Error as e:
             conn.rollback()
             raise Exception(f"Failed to index links: {e}")
+        finally:
+            conn.close()
+    
+    def _resolve_link_target(self, target: str) -> str:
+        """Resolve a wikilink target to the best matching note path or title."""
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        
+        try:
+            # First, try exact matches on path, title, filename, or stem
+            cursor.execute("""
+                SELECT path, title FROM notes 
+                WHERE path = ? OR title = ? OR 
+                      path LIKE '%/' || ? OR path LIKE '%/' || ? || '.md'
+                ORDER BY 
+                    CASE 
+                        WHEN title = ? THEN 1
+                        WHEN path = ? THEN 2
+                        WHEN path LIKE '%/' || ? || '.md' THEN 3
+                        ELSE 4
+                    END
+                LIMIT 1
+            """, (target, target, target, target, target, target, target))
+            
+            result = cursor.fetchone()
+            if result:
+                return result["path"]
+            
+            # If no exact match, return the original target
+            # This allows for forward references to notes that don't exist yet
+            return target
+            
+        except sqlite3.Error:
+            # If query fails, return original target
+            return target
         finally:
             conn.close()
     
@@ -236,16 +274,32 @@ class DatabaseManager:
         cursor = conn.cursor()
         
         try:
-            # Get links where dst_note matches the note path or title
-            note_name = Path(note_path).stem  # filename without extension
+            # Get the note info to find its title and normalized identifiers
+            cursor.execute("SELECT title, path FROM notes WHERE path = ?", (note_path,))
+            note_row = cursor.fetchone()
             
-            cursor.execute("""
+            if not note_row:
+                return []
+            
+            note_title = note_row["title"]
+            note_filename = Path(note_path).name
+            note_stem = Path(note_path).stem
+            
+            # Create a list of possible targets this note could be referenced as
+            possible_targets = [note_path, note_title, note_filename, note_stem]
+            # Remove duplicates and None values
+            possible_targets = list(set(filter(None, possible_targets)))
+            
+            # Build the WHERE clause dynamically
+            placeholders = ", ".join("?" * len(possible_targets))
+            
+            cursor.execute(f"""
                 SELECT l.src_note, l.link_text, l.occurrences, n.title, n.path
                 FROM links l
                 LEFT JOIN notes n ON l.src_note = n.note_id
-                WHERE l.dst_note IN (?, ?, ?)
+                WHERE l.dst_note IN ({placeholders})
                 ORDER BY l.occurrences DESC, n.modified_at DESC
-            """, (note_path, note_name, Path(note_path).name))
+            """, possible_targets)
             
             backlinks = []
             for row in cursor.fetchall():
